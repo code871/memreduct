@@ -1,28 +1,25 @@
 // Mem Reduct
 // Copyright (c) 2011-2019 Henry++
 
-#ifndef __MAIN_H__
-#define __MAIN_H__
+#pragma once
 
 #include <windows.h>
 #include <commctrl.h>
+
+#include "routine.hpp"
 #include "resource.hpp"
 #include "app.hpp"
 
-#define WM_TRAYICON WM_APP + 1
 #define FONT_DEFAULT L"Tahoma;8;400"
 #define TIMER 1000
 #define UID 1337
 #define LANG_MENU 6
 
-// libs
-#pragma comment(lib, "ntdll.lib")
+#define DEFAULT_AUTOREDUCT_VAL 90U
+#define DEFAULT_AUTOREDUCTINTERVAL_VAL 30U
 
-#define DEFAULT_AUTOREDUCT_VAL UINT (90)
-#define DEFAULT_AUTOREDUCTINTERVAL_VAL UINT (30)
-
-#define DEFAULT_DANGER_LEVEL UINT (90)
-#define DEFAULT_WARNING_LEVEL UINT (60)
+#define DEFAULT_DANGER_LEVEL 90U
+#define DEFAULT_WARNING_LEVEL 60U
 
 // memory cleaning area (mask)
 #define REDUCT_WORKING_SET 0x01
@@ -71,7 +68,7 @@ struct STATIC_DATA
 	HBITMAP hbitmap = nullptr;
 	HBITMAP hbitmap_mask = nullptr;
 
-	HFONT font = nullptr;
+	HFONT hfont = nullptr;
 
 	HBRUSH bg_brush = nullptr;
 	HBRUSH bg_brush_warning = nullptr;
@@ -79,5 +76,3 @@ struct STATIC_DATA
 
 	HICON htrayicon = nullptr;
 };
-
-#endif // __MAIN_H__
