@@ -16,7 +16,7 @@ STATIC_DATA config;
 RECT icon_rc;
 MEMORYINFO meminfo;
 
-rapp app (APP_NAME, APP_NAME_SHORT, APP_VERSION, APP_COPYRIGHT);
+rapp app;
 
 std::vector<UINT> limit_vec;
 std::vector<UINT> interval_vec;
@@ -447,7 +447,7 @@ void CALLBACK _app_timercallback (HWND hwnd, UINT, UINT_PTR, DWORD)
 			else if (i < 9)
 				percent = meminfo.percent_ws;
 
-			_r_listview_setitem (hwnd, IDC_LISTVIEW, i, 0, nullptr, INVALID_INT, INVALID_INT, (LPARAM)percent);
+			_r_listview_setitem (hwnd, IDC_LISTVIEW, i, 0, nullptr, I_IMAGENONE, I_GROUPIDNONE, (LPARAM)percent);
 		}
 
 		_r_listview_setitem (hwnd, IDC_LISTVIEW, 0, 1, _r_fmt (L"%d%%", meminfo.percent_phys));
@@ -496,6 +496,7 @@ void _app_iconinit (HWND hwnd)
 	config.hfont = CreateFontIndirect (&lf);
 
 	// init rect
+	icon_rc.left = icon_rc.top = 0;
 	icon_rc.right = icon_rc.bottom = _r_dc_getsystemmetrics (hwnd, SM_CXSMICON) * config.scale;
 
 	// init dc
@@ -547,13 +548,14 @@ void _app_hotkeyinit (HWND hwnd)
 
 INT_PTR CALLBACK SettingsProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	static PAPP_SETTINGS_PAGE ptr_page = nullptr;
-
 	switch (msg)
 	{
 		case WM_INITDIALOG:
 		{
-			ptr_page = (PAPP_SETTINGS_PAGE)lparam;
+#ifndef _APP_NO_DARKTHEME
+			_r_wnd_setdarktheme (hwnd);
+#endif // _APP_NO_DARKTHEME
+
 			break;
 		}
 
@@ -869,33 +871,32 @@ INT_PTR CALLBACK SettingsProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam
 			switch (ctrl_id)
 			{
 				case IDC_AUTOREDUCTVALUE_CTRL:
+				{
+					if (notify_code == EN_CHANGE)
+						app.ConfigSet (L"AutoreductValue", (UINT)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTVALUE, UDM_GETPOS32, 0, 0));
+
+					break;
+				}
+
 				case IDC_AUTOREDUCTINTERVALVALUE_CTRL:
+				{
+					if (notify_code == EN_CHANGE)
+						app.ConfigSet (L"AutoreductIntervalValue", (UINT)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTINTERVALVALUE, UDM_GETPOS32, 0, 0));
+
+					break;
+				}
+
 				case IDC_TRAYLEVELWARNING_CTRL:
 				case IDC_TRAYLEVELDANGER_CTRL:
 				{
-					bool is_stylechanged = false;
+					if (notify_code == EN_CHANGE)
+					{
+						if (ctrl_id == IDC_TRAYLEVELWARNING_CTRL)
+							app.ConfigSet (L"TrayLevelWarning", (UINT)SendDlgItemMessage (hwnd, IDC_TRAYLEVELWARNING, UDM_GETPOS32, 0, 0));
 
-					if (ctrl_id == IDC_AUTOREDUCTVALUE_CTRL && notify_code == EN_CHANGE)
-					{
-						app.ConfigSet (L"AutoreductValue", (UINT)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTVALUE, UDM_GETPOS32, 0, 0));
-					}
-					else if (ctrl_id == IDC_AUTOREDUCTINTERVALVALUE_CTRL && notify_code == EN_CHANGE)
-					{
-						app.ConfigSet (L"AutoreductIntervalValue", (UINT)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTINTERVALVALUE, UDM_GETPOS32, 0, 0));
-					}
-					else if (ctrl_id == IDC_TRAYLEVELWARNING_CTRL && notify_code == EN_CHANGE)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayLevelWarning", (UINT)SendDlgItemMessage (hwnd, IDC_TRAYLEVELWARNING, UDM_GETPOS32, 0, 0));
-					}
-					else if (ctrl_id == IDC_TRAYLEVELDANGER_CTRL && notify_code == EN_CHANGE)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayLevelDanger", (UINT)SendDlgItemMessage (hwnd, IDC_TRAYLEVELDANGER, UDM_GETPOS32, 0, 0));
-					}
+						else if (ctrl_id == IDC_TRAYLEVELDANGER_CTRL)
+							app.ConfigSet (L"TrayLevelDanger", (UINT)SendDlgItemMessage (hwnd, IDC_TRAYLEVELDANGER, UDM_GETPOS32, 0, 0));
 
-					if (is_stylechanged)
-					{
 						_app_iconredraw (app.GetHWND ());
 						_r_listview_redraw (app.GetHWND (), IDC_LISTVIEW);
 					}
@@ -904,195 +905,209 @@ INT_PTR CALLBACK SettingsProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam
 				}
 
 				case IDC_ALWAYSONTOP_CHK:
+				{
+					const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+
+					app.ConfigSet (L"AlwaysOnTop", is_enable);
+					CheckMenuItem (GetMenu (app.GetHWND ()), IDM_ALWAYSONTOP_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
+
+					break;
+				}
+
 				case IDC_LOADONSTARTUP_CHK:
+				{
+					const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+
+					app.AutorunEnable (is_enable);
+					CheckMenuItem (GetMenu (app.GetHWND ()), IDM_LOADONSTARTUP_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
+
+					break;
+				}
+
 				case IDC_STARTMINIMIZED_CHK:
+				{
+					const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+
+					app.ConfigSet (L"IsStartMinimized", is_enable);
+					CheckMenuItem (GetMenu (app.GetHWND ()), IDM_STARTMINIMIZED_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
+
+					break;
+				}
+
 				case IDC_REDUCTCONFIRMATION_CHK:
+				{
+					const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+
+					app.ConfigSet (L"IsShowReductConfirmation", is_enable);
+					CheckMenuItem (GetMenu (app.GetHWND ()), IDM_REDUCTCONFIRMATION_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
+
+					break;
+				}
+
 				case IDC_SKIPUACWARNING_CHK:
+				{
+					app.SkipUacEnable (IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+					break;
+				}
+
 				case IDC_CHECKUPDATES_CHK:
+				{
+					const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+
+					app.ConfigSet (L"CheckUpdates", is_enable);
+					CheckMenuItem (GetMenu (app.GetHWND ()), IDM_CHECKUPDATES_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
+
+					break;
+				}
+
 				case IDC_LANGUAGE:
+				{
+					if (notify_code == CBN_SELCHANGE)
+						app.LocaleApplyFromControl (hwnd, ctrl_id);
+
+					break;
+				}
+
 				case IDC_WORKINGSET_CHK:
 				case IDC_SYSTEMWORKINGSET_CHK:
 				case IDC_STANDBYLISTPRIORITY0_CHK:
 				case IDC_STANDBYLIST_CHK:
 				case IDC_MODIFIEDLIST_CHK:
 				case IDC_COMBINEMEMORYLISTS_CHK:
+				{
+					DWORD mask = 0;
+
+					if (!!(IsDlgButtonChecked (hwnd, IDC_WORKINGSET_CHK) == BST_CHECKED))
+						mask |= REDUCT_WORKING_SET;
+
+					if (!!(IsDlgButtonChecked (hwnd, IDC_SYSTEMWORKINGSET_CHK) == BST_CHECKED))
+						mask |= REDUCT_SYSTEM_WORKING_SET;
+
+					if (!!(IsDlgButtonChecked (hwnd, IDC_STANDBYLISTPRIORITY0_CHK) == BST_CHECKED))
+						mask |= REDUCT_STANDBY_PRIORITY0_LIST;
+
+					if (!!(IsDlgButtonChecked (hwnd, IDC_STANDBYLIST_CHK) == BST_CHECKED))
+						mask |= REDUCT_STANDBY_LIST;
+
+					if (!!(IsDlgButtonChecked (hwnd, IDC_MODIFIEDLIST_CHK) == BST_CHECKED))
+						mask |= REDUCT_MODIFIED_LIST;
+
+					if (!!(IsDlgButtonChecked (hwnd, IDC_COMBINEMEMORYLISTS_CHK) == BST_CHECKED))
+						mask |= REDUCT_COMBINE_MEMORY_LISTS;
+
+					if ((ctrl_id == IDC_STANDBYLIST_CHK || ctrl_id == IDC_MODIFIEDLIST_CHK) && (mask & REDUCT_MASK_FREEZES) != 0)
+					{
+						if (!app.ConfirmMessage (hwnd, nullptr, app.LocaleString (IDS_QUESTION_WARNING, nullptr), L"IsShowWarningConfirmation"))
+						{
+							CheckDlgButton (hwnd, ctrl_id, BST_UNCHECKED);
+							return FALSE;
+						}
+					}
+
+					app.ConfigSet (L"ReductMask2", mask);
+
+					break;
+				}
+
 				case IDC_AUTOREDUCTENABLE_CHK:
+				{
+					const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED) && _r_ctrl_isenabled (hwnd, ctrl_id);
+
+					HWND hbuddy = (HWND)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTVALUE, UDM_GETBUDDY, 0, 0);
+
+					if (hbuddy)
+						EnableWindow (hbuddy, is_enabled);
+
+					app.ConfigSet (L"AutoreductEnable", is_enabled);
+
+					break;
+				}
+
 				case IDC_AUTOREDUCTINTERVALENABLE_CHK:
+				{
+					const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED) && _r_ctrl_isenabled (hwnd, ctrl_id);
+
+					HWND hbuddy = (HWND)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTINTERVALVALUE, UDM_GETBUDDY, 0, 0);
+
+					if (hbuddy)
+						EnableWindow (hbuddy, is_enabled);
+
+					app.ConfigSet (L"AutoreductIntervalEnable", is_enabled);
+
+					break;
+				}
+
 				case IDC_HOTKEY_CLEAN_CHK:
+				{
+					const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED) && _r_ctrl_isenabled (hwnd, ctrl_id);
+
+					_r_ctrl_enable (hwnd, IDC_HOTKEY_CLEAN, is_enabled);
+
+					app.ConfigSet (L"HotkeyCleanEnable", is_enabled);
+					_app_hotkeyinit (app.GetHWND ());
+
+					break;
+				}
+
 				case IDC_HOTKEY_CLEAN:
+				{
+					if (notify_code == EN_CHANGE)
+					{
+						app.ConfigSet (L"HotkeyClean", (UINT)SendDlgItemMessage (hwnd, ctrl_id, HKM_GETHOTKEY, 0, 0));
+						_app_hotkeyinit (app.GetHWND ());
+					}
+
+					break;
+				}
+
 				case IDC_TRAYUSETRANSPARENCY_CHK:
 				case IDC_TRAYSHOWBORDER_CHK:
 				case IDC_TRAYROUNDCORNERS_CHK:
 				case IDC_TRAYCHANGEBG_CHK:
 				case IDC_TRAYUSEANTIALIASING_CHK:
-				case IDC_TRAYACTIONDC:
-				case IDC_TRAYACTIONMC:
-				case IDC_SHOW_CLEAN_RESULT_CHK:
 				{
-					bool is_stylechanged = false;
+					const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
 
-					if (ctrl_id == IDC_ALWAYSONTOP_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+					if (ctrl_id == IDC_TRAYUSETRANSPARENCY_CHK)
+						app.ConfigSet (L"TrayUseTransparency", is_enabled);
 
-						app.ConfigSet (L"AlwaysOnTop", is_enable);
-						CheckMenuItem (GetMenu (app.GetHWND ()), IDM_ALWAYSONTOP_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
-					}
-					else if (ctrl_id == IDC_STARTMINIMIZED_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+					else if (ctrl_id == IDC_TRAYSHOWBORDER_CHK)
+						app.ConfigSet (L"TrayShowBorder", is_enabled);
 
-						app.ConfigSet (L"IsStartMinimized", is_enable);
-						CheckMenuItem (GetMenu (app.GetHWND ()), IDM_STARTMINIMIZED_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
-					}
-					else if (ctrl_id == IDC_REDUCTCONFIRMATION_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+					else if (ctrl_id == IDC_TRAYROUNDCORNERS_CHK)
+						app.ConfigSet (L"TrayRoundCorners", is_enabled);
 
-						app.ConfigSet (L"IsShowReductConfirmation", is_enable);
-						CheckMenuItem (GetMenu (app.GetHWND ()), IDM_REDUCTCONFIRMATION_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
-					}
-					else if (ctrl_id == IDC_LOADONSTARTUP_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+					else if (ctrl_id == IDC_TRAYCHANGEBG_CHK)
+						app.ConfigSet (L"TrayChangeBg", is_enabled);
 
-						app.AutorunEnable (is_enable);
-						CheckMenuItem (GetMenu (app.GetHWND ()), IDM_LOADONSTARTUP_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
-					}
-					else if (ctrl_id == IDC_SKIPUACWARNING_CHK && notify_code == BN_CLICKED)
-					{
-						app.SkipUacEnable (IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
-					}
-					else if (ctrl_id == IDC_CHECKUPDATES_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enable = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED);
+					else if (ctrl_id == IDC_TRAYUSEANTIALIASING_CHK)
+						app.ConfigSet (L"TrayUseAntialiasing", is_enabled);
 
-						app.ConfigSet (L"CheckUpdates", is_enable);
-						CheckMenuItem (GetMenu (app.GetHWND ()), IDM_CHECKUPDATES_CHK, MF_BYCOMMAND | (is_enable ? MF_CHECKED : MF_UNCHECKED));
-					}
-					else if (ctrl_id == IDC_LANGUAGE && notify_code == CBN_SELCHANGE)
-					{
-						app.LocaleApplyFromControl (hwnd, ctrl_id);
-					}
-					else if ((
-						ctrl_id == IDC_WORKINGSET_CHK ||
-						ctrl_id == IDC_SYSTEMWORKINGSET_CHK ||
-						ctrl_id == IDC_STANDBYLISTPRIORITY0_CHK ||
-						ctrl_id == IDC_STANDBYLIST_CHK ||
-						ctrl_id == IDC_MODIFIEDLIST_CHK ||
-						ctrl_id == IDC_COMBINEMEMORYLISTS_CHK
-						) && notify_code == BN_CLICKED)
-					{
-						DWORD mask = 0;
+					_app_iconinit (app.GetHWND ());
+					_app_iconredraw (app.GetHWND ());
 
-						if (IsDlgButtonChecked (hwnd, IDC_WORKINGSET_CHK) == BST_CHECKED)
-							mask |= REDUCT_WORKING_SET;
+					break;
+				}
 
-						if (IsDlgButtonChecked (hwnd, IDC_SYSTEMWORKINGSET_CHK) == BST_CHECKED)
-							mask |= REDUCT_SYSTEM_WORKING_SET;
-
-						if (IsDlgButtonChecked (hwnd, IDC_STANDBYLISTPRIORITY0_CHK) == BST_CHECKED)
-							mask |= REDUCT_STANDBY_PRIORITY0_LIST;
-
-						if (IsDlgButtonChecked (hwnd, IDC_STANDBYLIST_CHK) == BST_CHECKED)
-							mask |= REDUCT_STANDBY_LIST;
-
-						if (IsDlgButtonChecked (hwnd, IDC_MODIFIEDLIST_CHK) == BST_CHECKED)
-							mask |= REDUCT_MODIFIED_LIST;
-
-						if (IsDlgButtonChecked (hwnd, IDC_COMBINEMEMORYLISTS_CHK) == BST_CHECKED)
-							mask |= REDUCT_COMBINE_MEMORY_LISTS;
-
-						if (
-							(ctrl_id == IDC_STANDBYLIST_CHK && (mask & REDUCT_STANDBY_LIST) != 0) ||
-							(ctrl_id == IDC_MODIFIEDLIST_CHK && (mask & REDUCT_MODIFIED_LIST) != 0)
-							)
-						{
-							if (!app.ConfirmMessage (hwnd, nullptr, app.LocaleString (IDS_QUESTION_WARNING, nullptr), L"IsShowWarningConfirmation"))
-							{
-								const LONG_PTR dialog_id = GetWindowLongPtr (hwnd, GWLP_USERDATA);
-								SendMessage (hwnd, RM_INITIALIZE, dialog_id, (LPARAM)ptr_page);
-								return FALSE;
-							}
-						}
-
-						app.ConfigSet (L"ReductMask2", mask);
-					}
-					else if (ctrl_id == IDC_AUTOREDUCTENABLE_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED) && _r_ctrl_isenabled (hwnd, ctrl_id);
-
-						EnableWindow ((HWND)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTVALUE, UDM_GETBUDDY, 0, 0), is_enabled);
-
-						app.ConfigSet (L"AutoreductEnable", is_enabled);
-					}
-					else if (ctrl_id == IDC_AUTOREDUCTINTERVALENABLE_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED) && _r_ctrl_isenabled (hwnd, ctrl_id);
-
-						EnableWindow ((HWND)SendDlgItemMessage (hwnd, IDC_AUTOREDUCTINTERVALVALUE, UDM_GETBUDDY, 0, 0), is_enabled);
-
-						app.ConfigSet (L"AutoreductIntervalEnable", is_enabled);
-					}
-					else if (ctrl_id == IDC_HOTKEY_CLEAN_CHK && notify_code == BN_CLICKED)
-					{
-						const bool is_enabled = !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED) && _r_ctrl_isenabled (hwnd, ctrl_id);
-
-						_r_ctrl_enable (hwnd, IDC_HOTKEY_CLEAN, is_enabled);
-
-						app.ConfigSet (L"HotkeyCleanEnable", is_enabled);
-
-						_app_hotkeyinit (app.GetHWND ());
-					}
-					else if (ctrl_id == IDC_HOTKEY_CLEAN && notify_code == EN_CHANGE)
-					{
-						app.ConfigSet (L"HotkeyClean", (UINT)SendDlgItemMessage (hwnd, ctrl_id, HKM_GETHOTKEY, 0, 0));
-
-						_app_hotkeyinit (app.GetHWND ());
-					}
-					else if (ctrl_id == IDC_TRAYUSETRANSPARENCY_CHK && notify_code == BN_CLICKED)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayUseTransparency", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
-					}
-					else if (ctrl_id == IDC_TRAYSHOWBORDER_CHK && notify_code == BN_CLICKED)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayShowBorder", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
-					}
-					else if (ctrl_id == IDC_TRAYROUNDCORNERS_CHK && notify_code == BN_CLICKED)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayRoundCorners", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
-					}
-					else if (ctrl_id == IDC_TRAYCHANGEBG_CHK && notify_code == BN_CLICKED)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayChangeBg", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
-					}
-					else if (ctrl_id == IDC_TRAYUSEANTIALIASING_CHK && notify_code == BN_CLICKED)
-					{
-						is_stylechanged = true;
-						app.ConfigSet (L"TrayUseAntialiasing", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
-					}
-					else if (ctrl_id == IDC_TRAYACTIONDC && notify_code == CBN_SELCHANGE)
+				case IDC_TRAYACTIONDC:
+				{
+					if (notify_code == CBN_SELCHANGE)
 						app.ConfigSet (L"TrayActionDc", (INT)SendDlgItemMessage (hwnd, ctrl_id, CB_GETCURSEL, 0, 0));
 
-					else if (ctrl_id == IDC_TRAYACTIONMC && notify_code == CBN_SELCHANGE)
-					{
+					break;
+				}
+
+				case IDC_TRAYACTIONMC:
+				{
+					if (notify_code == CBN_SELCHANGE)
 						app.ConfigSet (L"TrayActionMc", (INT)SendDlgItemMessage (hwnd, ctrl_id, CB_GETCURSEL, 0, 0));
-					}
-					else if (ctrl_id == IDC_SHOW_CLEAN_RESULT_CHK && notify_code == BN_CLICKED)
-					{
-						app.ConfigSet (L"BalloonCleanResults", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
-					}
 
-					if (is_stylechanged)
-					{
-						_app_iconinit (app.GetHWND ());
-						_app_iconredraw (app.GetHWND ());
-					}
+					break;
+				}
 
+				case IDC_SHOW_CLEAN_RESULT_CHK:
+				{
+					app.ConfigSet (L"BalloonCleanResults", !!(IsDlgButtonChecked (hwnd, ctrl_id) == BST_CHECKED));
 					break;
 				}
 
@@ -1102,7 +1117,7 @@ INT_PTR CALLBACK SettingsProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam
 				case IDC_COLOR_DANGER:
 				{
 					CHOOSECOLOR cc = {0};
-					COLORREF cust[16] = {TRAY_COLOR_TEXT, TRAY_COLOR_BG, TRAY_COLOR_WARNING, TRAY_COLOR_DANGER};
+					COLORREF cust[16] = {TRAY_COLOR_DANGER, TRAY_COLOR_WARNING, TRAY_COLOR_BG, TRAY_COLOR_TEXT};
 
 					HWND hctrl = GetDlgItem (hwnd, ctrl_id);
 
@@ -1213,7 +1228,7 @@ INT_PTR CALLBACK DlgProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				_r_listview_addgroup (hwnd, IDC_LISTVIEW, i, app.LocaleString (IDS_GROUP_1 + i, nullptr), 0, 0);
 
 				for (INT j = 0; j < 3; j++)
-					_r_listview_additem (hwnd, IDC_LISTVIEW, k++, 0, app.LocaleString (IDS_ITEM_1 + j, nullptr), INVALID_INT, i);
+					_r_listview_additem (hwnd, IDC_LISTVIEW, k++, 0, app.LocaleString (IDS_ITEM_1 + j, nullptr), I_IMAGENONE, i);
 			}
 
 			// settings
@@ -1588,8 +1603,9 @@ INT_PTR CALLBACK DlgProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		case WM_COMMAND:
 		{
 			const INT ctrl_id = LOWORD (wparam);
+			const INT notify_code = HIWORD (wparam);
 
-			if (HIWORD (wparam) == 0 && ctrl_id >= IDX_LANGUAGE && ctrl_id <= static_cast<INT>(IDX_LANGUAGE + app.LocaleGetCount ()))
+			if (notify_code == 0 && ctrl_id >= IDX_LANGUAGE && ctrl_id <= static_cast<INT>(IDX_LANGUAGE + app.LocaleGetCount ()))
 			{
 				app.LocaleApplyFromMenu (GetSubMenu (GetSubMenu (GetMenu (hwnd), 1), LANG_MENU), ctrl_id, IDX_LANGUAGE);
 				return FALSE;
@@ -1724,7 +1740,7 @@ INT_PTR CALLBACK DlgProc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				case IDM_SETTINGS:
 				case IDM_TRAY_SETTINGS:
 				{
-					app.CreateSettingsWindow (&SettingsProc);
+					app.CreateSettingsWindow (hwnd, &SettingsProc);
 					break;
 				}
 
@@ -1802,24 +1818,27 @@ INT APIENTRY wWinMain (HINSTANCE, HINSTANCE, LPWSTR, INT)
 {
 	MSG msg = {0};
 
-	if (app.CreateMainWindow (IDD_MAIN, IDI_MAIN, &DlgProc))
+	if (app.Initialize (APP_NAME, APP_NAME_SHORT, APP_VERSION, APP_COPYRIGHT))
 	{
-		const HACCEL haccel = LoadAccelerators (app.GetHINSTANCE (), MAKEINTRESOURCE (IDA_MAIN));
-
-		if (haccel)
+		if (app.CreateMainWindow (IDD_MAIN, IDI_MAIN, &DlgProc))
 		{
-			while (GetMessage (&msg, nullptr, 0, 0) > 0)
+			const HACCEL haccel = LoadAccelerators (app.GetHINSTANCE (), MAKEINTRESOURCE (IDA_MAIN));
+
+			if (haccel)
 			{
-				TranslateAccelerator (app.GetHWND (), haccel, &msg);
-
-				if (!IsDialogMessage (app.GetHWND (), &msg))
+				while (GetMessage (&msg, nullptr, 0, 0) > 0)
 				{
-					TranslateMessage (&msg);
-					DispatchMessage (&msg);
-				}
-			}
+					TranslateAccelerator (app.GetHWND (), haccel, &msg);
 
-			DestroyAcceleratorTable (haccel);
+					if (!IsDialogMessage (app.GetHWND (), &msg))
+					{
+						TranslateMessage (&msg);
+						DispatchMessage (&msg);
+					}
+				}
+
+				DestroyAcceleratorTable (haccel);
+			}
 		}
 	}
 
